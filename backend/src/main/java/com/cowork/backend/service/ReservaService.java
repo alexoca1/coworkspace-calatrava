@@ -6,49 +6,52 @@ import com.cowork.backend.model.Plan;
 import com.cowork.backend.model.Reserva;
 import com.cowork.backend.model.Usuario;
 import com.cowork.backend.model.enums.EstadoReserva;
+import com.cowork.backend.model.enums.TipoEspacio;
 import com.cowork.backend.repository.EspacioRepository;
+import com.cowork.backend.repository.PagoRepository;
 import com.cowork.backend.repository.ReservaRepository;
 import com.cowork.backend.repository.UsuarioRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import com.cowork.backend.model.Pago;
+import com.cowork.backend.model.enums.TipoPago;
+
 
 @Service
 public class ReservaService {
-
     private final ReservaRepository reservaRepository;
     private final EspacioRepository espacioRepository;
     private final UsuarioRepository usuarioRepository;
+    private final PagoRepository pagoRepository;
 
     public ReservaService(ReservaRepository reservaRepository,
                           EspacioRepository espacioRepository,
-                          UsuarioRepository usuarioRepository) {
+                          UsuarioRepository usuarioRepository,
+                          PagoRepository pagoRepository) {
         this.reservaRepository = reservaRepository;
         this.espacioRepository = espacioRepository;
         this.usuarioRepository = usuarioRepository;
+        this.pagoRepository = pagoRepository;
     }
 
     @Transactional
     public Reserva crearReserva(Long usuarioId, ReservaRequest request) {
         LocalDateTime ahora = LocalDateTime.now();
-
         if (request.fechaInicio().isBefore(ahora)) {
             throw new IllegalArgumentException("No se pueden realizar reservas en fechas pasadas");
         }
-
         if (!request.fechaFin().isAfter(request.fechaInicio())) {
             throw new IllegalArgumentException("La fecha de fin debe ser posterior a la de inicio");
         }
 
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-
         Espacio espacio = espacioRepository.findById(request.espacioId())
                 .orElseThrow(() -> new IllegalArgumentException("Espacio no encontrado"));
 
@@ -63,15 +66,14 @@ public class ReservaService {
                 request.fechaFin(),
                 EstadoReserva.CANCELADA
         );
+
         if (solapado) {
             throw new IllegalStateException("El espacio ya está reservado en ese horario");
         }
 
         BigDecimal precioTotal = calcularPrecio(espacio, usuario.getPlan(), request.fechaInicio(), request.fechaFin());
-
         // generar codigo unico para el check-in (ej: CW-8F2A9B1C)
         String tokenCheckin = "CW-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-
         Reserva reserva = new Reserva(
                 usuario,
                 espacio,
@@ -81,8 +83,10 @@ public class ReservaService {
                 EstadoReserva.CONFIRMADA,
                 tokenCheckin
         );
-
-        return reservaRepository.save(reserva);
+        Reserva reservaGuardada = reservaRepository.save(reserva);
+        // Registrar el pago de la reserva
+        pagoRepository.save(new Pago(reservaGuardada, TipoPago.COBRO, precioTotal));
+        return reservaGuardada;
     }
 
     @Transactional
@@ -103,8 +107,16 @@ public class ReservaService {
             throw new IllegalStateException("No se puede cancelar una reserva ya utilizada");
         }
 
+        // Regla del anteproyecto: cancelación con al menos 2 horas de antelación
+        if (!esAdmin && LocalDateTime.now().plusHours(2).isAfter(reserva.getFechaInicio())) {
+            throw new IllegalStateException("Solo se puede cancelar con al menos 2 horas de antelación");
+        }
+
         reserva.setEstado(EstadoReserva.CANCELADA);
-        return reservaRepository.save(reserva);
+        Reserva reservaCancelada = reservaRepository.save(reserva);
+        // Registrar el reembolso al cancelar
+        pagoRepository.save(new Pago(reservaCancelada, TipoPago.REEMBOLSO, reservaCancelada.getPrecioTotal()));
+        return reservaCancelada;
     }
 
     @Transactional
@@ -126,9 +138,11 @@ public class ReservaService {
     }
 
     public List<Long> obtenerEspaciosOcupados(LocalDateTime inicio, LocalDateTime fin) {
+
         if (!fin.isAfter(inicio)) {
             throw new IllegalArgumentException("Rango de fechas inválido");
         }
+
         return reservaRepository.findEspacioIdsOcupadosEnRango(inicio, fin, EstadoReserva.CANCELADA);
     }
 
@@ -141,15 +155,24 @@ public class ReservaService {
     }
 
     private BigDecimal calcularPrecio(Espacio espacio, Plan plan, LocalDateTime inicio, LocalDateTime fin) {
-        long minutos = Duration.between(inicio, fin).toMinutes();
-        double horas = minutos / 60.0;
-        double total = espacio.getPrecioHora().doubleValue() * horas;
 
-        if (plan != null && plan.getDescuentoPorcentaje() != null) {
-            double descuento = plan.getDescuentoPorcentaje().doubleValue();
-            total = total - (total * (descuento / 100.0));
+        long minutosTotales = Duration.between(inicio, fin).toMinutes();
+        double horas = minutosTotales / 60.0;
+        if (espacio.getTipo() == TipoEspacio.CABINA_ZOOM) {
+            int bloquesMediaHora = (int) Math.ceil(minutosTotales / 30.0);
+            horas = bloquesMediaHora * 0.5;
         }
 
-        return BigDecimal.valueOf(total).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal precioBaseHora = espacio.getPrecioHora();
+        BigDecimal totalSinDescuento = precioBaseHora.multiply(BigDecimal.valueOf(horas));
+        if (plan == null || plan.getDescuentoPorcentaje() == null || plan.getDescuentoPorcentaje().compareTo(BigDecimal.ZERO) == 0) {
+            return totalSinDescuento.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal factorDescuento = BigDecimal.ONE.subtract(
+                plan.getDescuentoPorcentaje().divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP)
+        );
+
+        return totalSinDescuento.multiply(factorDescuento).setScale(2, RoundingMode.HALF_UP);
     }
 }

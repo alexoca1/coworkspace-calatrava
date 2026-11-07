@@ -35,7 +35,7 @@ public class Plan {
     @Column(name = "activo", nullable = false)
     private Boolean activo = true;
 
-    // Constructor vacío para JPA
+
     public Plan() {
     }
 
