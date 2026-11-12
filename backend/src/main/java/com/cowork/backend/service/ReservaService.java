@@ -107,7 +107,7 @@ public class ReservaService {
             throw new IllegalStateException("No se puede cancelar una reserva ya utilizada");
         }
 
-        // Regla del anteproyecto: cancelación con al menos 2 horas de antelación
+        //cancelación con al menos 2 horas de antelación
         if (!esAdmin && LocalDateTime.now().plusHours(2).isAfter(reserva.getFechaInicio())) {
             throw new IllegalStateException("Solo se puede cancelar con al menos 2 horas de antelación");
         }

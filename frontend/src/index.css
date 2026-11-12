@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@theme {
+  --color-corporativo: #0284c7;     /* Azul corporativo (equivale a sky-600) */
+  --color-fondo: #f4f5f7;           /* Fondo general de la app */
+  --color-superficie: #ffffff;      /* Tarjetas y paneles (equivale a white) */
+  --color-disponible: #16a34a;      /* Verde disponibilidad (equivale a green-600) */
+  --color-ocupado: #dc2626;         /* Rojo ocupación (equivale a red-600) */
+  --color-principal: #1e293b;       /* Texto principal (equivale a slate-800) */
+  --color-divisor: #cbd5e1;         /* Bordes y divisores (equivale a slate-300) */
+}

@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.Map;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,10 +18,14 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/reservas")
 @CrossOrigin(origins = "*")
 public class ReservaController {
+
     private final ReservaService reservaService;
+
     public ReservaController(ReservaService reservaService) {
+
         this.reservaService = reservaService;
     }
+
     // Crear una nueva reserva
     @PostMapping
     public ResponseEntity<?> crearReserva(
@@ -34,6 +39,7 @@ public class ReservaController {
                     .body(Map.of("error", e.getMessage()));
         }
     }
+
     // Listar las reservas de un usuario
     @GetMapping("/usuario/{usuarioId}")
     public ResponseEntity<List<ReservaResponse>> listarPorUsuario(@PathVariable Long usuarioId) {
@@ -43,6 +49,7 @@ public class ReservaController {
                 .collect(Collectors.toList());
         return ResponseEntity.ok(respuesta);
     }
+
     // Listar todas las reservas (para panel de admin)
     @GetMapping
     public ResponseEntity<List<ReservaResponse>> listarTodas() {
@@ -52,12 +59,14 @@ public class ReservaController {
                 .collect(Collectors.toList());
         return ResponseEntity.ok(respuesta);
     }
+
     // Cancelar una reserva
     @PutMapping("/{id}/cancelar")
     public ResponseEntity<?> cancelarReserva(
             @PathVariable Long id,
             @RequestParam Long usuarioId,
             @RequestParam(defaultValue = "false") boolean esAdmin) {
+
         try {
             Reserva reserva = reservaService.cancelarReserva(id, usuarioId, esAdmin);
             return ResponseEntity.ok(new ReservaResponse(reserva));
@@ -69,6 +78,7 @@ public class ReservaController {
                     .body(Map.of("error", e.getMessage()));
         }
     }
+
     // Validar check-in mediante código
     @PostMapping("/checkin/{codigo}")
     public ResponseEntity<?> registrarCheckin(@PathVariable String codigo) {
@@ -80,6 +90,7 @@ public class ReservaController {
                     .body(Map.of("error", e.getMessage()));
         }
     }
+
     // Consultar espacios ocupados en un rango de fechas
     @GetMapping("/ocupados")
     public ResponseEntity<List<Long>> obtenerEspaciosOcupados(
